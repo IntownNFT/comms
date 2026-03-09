@@ -13,8 +13,13 @@ import {
   MailIcon,
   PhoneIcon,
   BellIcon,
+  CreditCardIcon,
+  CoinsIcon,
+  ExternalLinkIcon,
+  LoaderIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSession, authClient } from "@/lib/auth-client";
 
 type AgentMode = "auto" | "draft" | "manual";
 
@@ -35,7 +40,7 @@ interface AuthStatus {
   resend: { connected: boolean; masked: string | null; fromEmail: string | null };
 }
 
-type Tab = "general" | "email" | "voice" | "notifications";
+type Tab = "general" | "billing" | "email" | "voice" | "notifications";
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   list_contacts: "List all contacts",
@@ -74,11 +79,37 @@ export default function SettingsPage() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>("general");
+  const [credits, setCredits] = useState<number | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const { data: session } = useSession();
+  const userEmail = session?.user?.email;
 
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then(setSettings);
     fetch("/api/auth").then((r) => r.json()).then(setAuthStatus);
   }, []);
+
+  useEffect(() => {
+    if (userEmail) {
+      fetch(`/api/credits?email=${encodeURIComponent(userEmail)}`)
+        .then((r) => r.json())
+        .then((data) => setCredits(data.credits ?? null));
+    }
+  }, [userEmail]);
+
+  const handleBuyCredits = async (productId: string) => {
+    setCheckoutLoading(true);
+    try {
+      await authClient.checkoutEmbed({
+        products: [productId],
+        successUrl: window.location.origin + "/settings?tab=billing&purchased=1",
+      });
+    } catch {
+      // Embed may handle its own UI
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
 
   const toggleMode = useCallback((tool: string) => {
     setSettings((prev) => {
@@ -118,6 +149,7 @@ export default function SettingsPage() {
 
   const tabs: { value: Tab; label: string; icon: React.ElementType }[] = [
     { value: "general", label: "General", icon: SettingsIcon },
+    { value: "billing", label: "Billing", icon: CreditCardIcon },
     { value: "email", label: "Email", icon: MailIcon },
     { value: "voice", label: "Voice", icon: PhoneIcon },
     { value: "notifications", label: "Notifications", icon: BellIcon },
@@ -267,6 +299,104 @@ export default function SettingsPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Billing Tab */}
+      {tab === "billing" && (
+        <div className="space-y-8">
+          {/* Credit Balance */}
+          <section>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+              Credit Balance
+            </h2>
+            <div className="p-4 rounded-xl bg-surface-1 border border-border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CoinsIcon className="size-5 text-accent" />
+                  <div>
+                    <div className="font-medium text-sm">Available Credits</div>
+                    <div className="text-xs text-muted-foreground">
+                      1 credit = 1 AI message
+                    </div>
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-accent">
+                  {credits === null ? (
+                    <LoaderIcon className="size-5 animate-spin text-muted-foreground" />
+                  ) : credits === Infinity ? (
+                    <span className="text-sm text-green-400">Unlimited (local mode)</span>
+                  ) : (
+                    credits
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Buy Credits */}
+          <section>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+              Purchase Credits
+            </h2>
+            <div className="grid gap-3">
+              {[
+                { label: "50 Credits", price: "$5", productId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_50 || "" },
+                { label: "200 Credits", price: "$15", productId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_200 || "" },
+                { label: "500 Credits", price: "$30", productId: process.env.NEXT_PUBLIC_POLAR_PRODUCT_500 || "" },
+              ].map(({ label, price, productId }) => (
+                <div
+                  key={label}
+                  className="flex items-center justify-between p-4 rounded-xl bg-surface-1 border border-border"
+                >
+                  <div>
+                    <div className="font-medium text-sm">{label}</div>
+                    <div className="text-xs text-muted-foreground">{price}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleBuyCredits(productId)}
+                    disabled={checkoutLoading || !productId}
+                  >
+                    {checkoutLoading ? (
+                      <LoaderIcon className="size-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        Buy <ExternalLinkIcon className="size-3" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Payments handled securely by Polar. Credits are added instantly after purchase.
+            </p>
+          </section>
+
+          {/* Polar Customer Portal */}
+          <section>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+              Manage Subscription
+            </h2>
+            <div className="p-4 rounded-xl bg-surface-1 border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">Polar Customer Portal</div>
+                  <div className="text-xs text-muted-foreground">
+                    View orders, manage subscriptions, and download invoices
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open("https://polar.sh/purchases", "_blank")}
+                >
+                  Open Portal <ExternalLinkIcon className="size-3" />
+                </Button>
+              </div>
             </div>
           </section>
         </div>

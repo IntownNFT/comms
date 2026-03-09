@@ -1,9 +1,9 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { isToolUIPart } from "ai";
+import { isToolUIPart, DefaultChatTransport } from "ai";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Conversation,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { InboxIcon, UsersIcon, MailIcon, ShieldCheckIcon } from "lucide-react";
+import { useSession } from "@/lib/auth-client";
 
 const TAGLINES = [
   "Your AI-powered communication hub",
@@ -52,7 +53,19 @@ const SLASH_COMMANDS: Record<string, string> = {
 export default function ChatPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
-  const { messages, sendMessage, status, stop } = useChat();
+  const { data: session } = useSession();
+  const userEmail = session?.user?.email;
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        body: userEmail ? { userEmail } : undefined,
+      }),
+    [userEmail]
+  );
+
+  const { messages, sendMessage, status, stop } = useChat({ transport });
   const [taglineIndex, setTaglineIndex] = useState(0);
 
   useEffect(() => {

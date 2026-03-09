@@ -11,10 +11,12 @@ import {
   SettingsIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
+  LogOutIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { signOut, useSession } from "@/lib/auth-client";
 
 const navItems = [
   { href: "/", label: "Chat", icon: MessageSquareIcon },
@@ -30,6 +32,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [hovered, setHovered] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const { data: session } = useSession();
 
   const expanded = !collapsed || hovered;
 
@@ -95,8 +98,18 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="px-2 py-3 border-t border-border">
+      {/* Footer */}
+      <div className="px-2 py-3 border-t border-border space-y-1">
+        {session && (
+          <button
+            type="button"
+            onClick={() => signOut({ fetchOptions: { onSuccess: () => { window.location.href = "/login"; } } })}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-red-400 hover:bg-surface-2 transition-colors w-full cursor-pointer"
+          >
+            <LogOutIcon className="size-5 flex-shrink-0" />
+            {expanded && <span>Sign out</span>}
+          </button>
+        )}
         <button
           type="button"
           onClick={toggle}
