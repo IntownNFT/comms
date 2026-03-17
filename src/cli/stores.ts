@@ -42,3 +42,11 @@ export async function approvalsStore() {
 export async function activityStore() {
   return loadStore("activity.ts");
 }
+
+export async function settingsStore() {
+  return loadStore("settings.ts");
+}
+
+export async function aiSettingsStore() {
+  return loadStore("ai-settings-store.ts");
+}

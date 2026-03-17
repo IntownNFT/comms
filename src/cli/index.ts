@@ -11,6 +11,8 @@ import { callsCommand } from "./commands/calls.js";
 import { voiceCommand } from "./commands/voice.js";
 import { approvalsCommand } from "./commands/approvals.js";
 import { activityCommand } from "./commands/activity.js";
+import { callCommand } from "./commands/call.js";
+import { settingsCommand } from "./commands/settings.js";
 import { setVerbose } from "../utils/logger.js";
 import { printBanner } from "./banner.js";
 
@@ -37,6 +39,8 @@ program.addCommand(callsCommand);
 program.addCommand(voiceCommand);
 program.addCommand(approvalsCommand);
 program.addCommand(activityCommand);
+program.addCommand(callCommand);
+program.addCommand(settingsCommand);
 
 if (process.argv.length <= 2) {
   printBanner();
