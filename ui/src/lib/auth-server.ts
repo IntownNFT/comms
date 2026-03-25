@@ -4,10 +4,9 @@ const isCloudMode = !!process.env.NEXT_PUBLIC_CONVEX_URL;
 
 // Only initialize BetterAuth in cloud mode — local mode doesn't use Convex auth
 const authExports = isCloudMode
-  ? (() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { convexBetterAuthNextJs } = require("@convex-dev/better-auth/nextjs");
-      return convexBetterAuthNextJs({
+  ? await (async () => {
+      const mod = await import("@convex-dev/better-auth/nextjs");
+      return mod.convexBetterAuthNextJs({
         convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL!,
         convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
       });
