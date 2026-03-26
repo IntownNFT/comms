@@ -110,6 +110,8 @@ export async function POST(req: Request) {
             voiceMethod: "POST",
             statusCallback: `${appUrl}/api/twilio/webhook`,
             statusCallbackMethod: "POST",
+            smsUrl: `${appUrl}/api/twilio/sms-webhook`,
+            smsMethod: "POST",
           }
         : {}),
     });
@@ -186,18 +188,21 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // Update the voice URL to point to the AI inbound handler
+    // Update voice + SMS URLs to point to AI handlers
     await client.incomingPhoneNumbers(numbers[0].sid).update({
       voiceUrl: `${appUrl}/api/twilio/webhook?type=inbound`,
       voiceMethod: "POST",
       statusCallback: `${appUrl}/api/twilio/webhook`,
       statusCallbackMethod: "POST",
+      smsUrl: `${appUrl}/api/twilio/sms-webhook`,
+      smsMethod: "POST",
     });
 
     return NextResponse.json({
       success: true,
       phoneNumber: targetNumber,
       voiceUrl: `${appUrl}/api/twilio/webhook?type=inbound`,
+      smsUrl: `${appUrl}/api/twilio/sms-webhook`,
     });
   } catch (err) {
     console.error("Twilio update error:", err);
