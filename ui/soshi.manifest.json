@@ -3,7 +3,7 @@
   "name": "Comms",
   "icon": "MessageSquare",
   "color": "#6366F1",
-  "description": "Unified communications hub — email, calls, contacts, calendar, and AI voice agents",
+  "description": "Unified communications hub — email, calls, SMS, contacts, calendar, and AI voice agents",
 
   "configFields": [
     { "key": "fromEmail", "label": "From Email", "type": "string", "group": "Email" },
@@ -11,6 +11,7 @@
     { "key": "agentMode_send_email", "label": "Send Email Mode", "type": "enum", "options": ["auto", "draft", "manual"], "group": "Agent Modes" },
     { "key": "agentMode_reply_to_email", "label": "Reply Email Mode", "type": "enum", "options": ["auto", "draft", "manual"], "group": "Agent Modes" },
     { "key": "agentMode_initiate_call", "label": "Initiate Call Mode", "type": "enum", "options": ["auto", "draft", "manual"], "group": "Agent Modes" },
+    { "key": "agentMode_send_sms", "label": "Send SMS Mode", "type": "enum", "options": ["auto", "draft", "manual"], "group": "Agent Modes" },
     { "key": "agentMode_create_contact", "label": "Create Contact Mode", "type": "enum", "options": ["auto", "draft", "manual"], "group": "Agent Modes" },
     { "key": "temperature", "label": "AI Temperature", "type": "number", "group": "AI" },
     { "key": "anthropicModel", "label": "Model", "type": "string", "group": "AI" },
@@ -45,6 +46,11 @@
       "name": "approval_created",
       "description": "Fires when an action is queued for user approval",
       "schema": { "approvalId": "string", "type": "string", "summary": "string" }
+    },
+    {
+      "name": "sms_received",
+      "description": "Fires when an inbound SMS is received",
+      "schema": { "from": "string", "body": "string", "messageSid": "string" }
     },
     {
       "name": "contact_created",
@@ -373,17 +379,68 @@
       "estimatedMs": 100,
       "idempotent": true,
       "requiredAuth": []
+    },
+    {
+      "name": "send_sms",
+      "description": "Send an SMS text message via Twilio",
+      "tool": "send_sms",
+      "params": { "to": "string", "message": "string" },
+      "risk": "write",
+      "estimatedMs": 2000,
+      "idempotent": false,
+      "requiredAuth": ["twilio"]
+    },
+    {
+      "name": "list_sms",
+      "description": "List SMS conversations or get a message thread with a specific phone number",
+      "tool": "list_sms",
+      "params": { "phone": "string?", "limit": "number?" },
+      "risk": "read",
+      "estimatedMs": 100,
+      "idempotent": true,
+      "requiredAuth": []
+    },
+    {
+      "name": "list_spaces",
+      "description": "List all communication presets/spaces",
+      "tool": "list_spaces",
+      "params": {},
+      "risk": "read",
+      "estimatedMs": 50,
+      "idempotent": true,
+      "requiredAuth": []
+    },
+    {
+      "name": "get_space",
+      "description": "Get a specific communication space with templates and tone settings",
+      "tool": "get_space",
+      "params": { "id": "string" },
+      "risk": "read",
+      "estimatedMs": 50,
+      "idempotent": true,
+      "requiredAuth": []
+    },
+    {
+      "name": "create_space",
+      "description": "Create a new communication preset with tone, templates, and auto-approve rules",
+      "tool": "create_space",
+      "params": { "name": "string", "description": "string?", "tone": "string?", "templates": "object[]?", "autoApproveTypes": "string[]?" },
+      "risk": "write",
+      "estimatedMs": 100,
+      "idempotent": false,
+      "requiredAuth": []
     }
   ],
 
   "routerKeywords": [
-    "email", "gmail", "inbox", "send", "draft", "reply", "archive", "trash",
+    "email", "gmail", "inbox", "send", "draft", "reply", "archive", "trash", "unsubscribe", "newsletter", "promotions",
     "call", "phone", "voice", "dial", "ring",
+    "sms", "text", "text message", "texting", "message",
     "contact", "address book", "people",
     "calendar", "event", "meeting", "schedule", "availability",
     "approval", "approve", "deny", "queue",
-    "settings", "config",
-    "priority", "triage", "summarize", "process"
+    "settings", "config", "space", "preset",
+    "priority", "triage", "summarize", "process", "categorize"
   ],
 
   "examples": [
@@ -395,7 +452,10 @@
     { "prompt": "show me my priority emails", "description": "Get AI-prioritized emails" },
     { "prompt": "what meetings do I have today?", "description": "List calendar events" },
     { "prompt": "process my unread emails", "description": "Run AI email processing" },
-    { "prompt": "show pending approvals", "description": "List approval queue" }
+    { "prompt": "show pending approvals", "description": "List approval queue" },
+    { "prompt": "text +14155551234 hey are you free for lunch?", "description": "Send SMS" },
+    { "prompt": "show my text conversations", "description": "List SMS conversations" },
+    { "prompt": "show my texts with +14155551234", "description": "Get SMS thread" }
   ],
 
   "oauthServices": [
@@ -403,7 +463,7 @@
   ],
 
   "builtInServices": [
-    { "id": "twilio", "name": "Twilio", "icon": "Phone", "description": "Voice calls and phone number management" }
+    { "id": "twilio", "name": "Twilio", "icon": "Phone", "description": "Voice calls, SMS messaging, and phone number management" }
   ],
 
   "price": 0,
