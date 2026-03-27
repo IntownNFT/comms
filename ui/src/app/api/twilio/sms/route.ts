@@ -12,11 +12,24 @@ export async function GET(req: Request) {
   const phoneNumber = url.searchParams.get("phone");
 
   if (phoneNumber) {
-    const messages = getSmsConversation(phoneNumber);
+    const raw = getSmsConversation(phoneNumber);
+    const messages = raw.map((m) => ({
+      direction: m.direction,
+      body: m.body,
+      timestamp: m.timestamp,
+      status: m.status,
+    }));
     return NextResponse.json({ messages });
   }
 
-  const conversations = getRecentConversations();
+  const raw = getRecentConversations();
+  const conversations = raw.map((c) => ({
+    phone: c.phoneNumber,
+    lastMessage: c.lastMessage.body?.slice(0, 100) ?? "",
+    lastTime: c.lastMessage.timestamp,
+    direction: c.lastMessage.direction,
+    count: c.messageCount,
+  }));
   return NextResponse.json({ conversations });
 }
 

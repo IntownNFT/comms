@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { ContactCard } from "@/components/chat/ContactCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { UsersIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import {
+  UsersIcon,
+  PlusIcon,
+  SearchIcon,
+  XIcon,
+  PhoneIcon,
+  MessageCircleIcon,
+  MailIcon,
+  PencilIcon,
+  TrashIcon,
+  SaveIcon,
+} from "lucide-react";
 
 interface Contact {
   id: string;
@@ -26,6 +38,7 @@ interface Contact {
 }
 
 export default function ContactsPage() {
+  const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -39,6 +52,16 @@ export default function ContactsPage() {
   const [newPhone, setNewPhone] = useState("");
   const [newCompany, setNewCompany] = useState("");
   const [newTags, setNewTags] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+
+  // Edit mode state
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   const fetchContacts = useCallback(async () => {
     setLoading(true);
@@ -79,6 +102,7 @@ export default function ContactsPage() {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
+        notes: newNotes || undefined,
       }),
     });
     setNewName("");
@@ -86,8 +110,83 @@ export default function ContactsPage() {
     setNewPhone("");
     setNewCompany("");
     setNewTags("");
+    setNewNotes("");
     setShowAdd(false);
     fetchContacts();
+  };
+
+  const startEditing = () => {
+    if (!selectedContact) return;
+    setEditName(selectedContact.name);
+    setEditEmail(selectedContact.email);
+    setEditPhone(selectedContact.phone ?? "");
+    setEditCompany(selectedContact.company ?? "");
+    setEditTags(selectedContact.tags.join(", "));
+    setEditNotes(selectedContact.notes ?? "");
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+  };
+
+  const handleSave = async () => {
+    if (!selectedContact || !editName.trim() || !editEmail.trim()) return;
+    const updated = {
+      id: selectedContact.id,
+      name: editName,
+      email: editEmail,
+      phone: editPhone || undefined,
+      company: editCompany || undefined,
+      tags: editTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      notes: editNotes || undefined,
+    };
+    await fetch("/api/contacts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    });
+    setEditing(false);
+    await fetchContacts();
+    // Update selectedContact with new values
+    setSelectedContact((prev) =>
+      prev
+        ? {
+            ...prev,
+            name: editName,
+            email: editEmail,
+            phone: editPhone || undefined,
+            company: editCompany || undefined,
+            tags: editTags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            notes: editNotes || undefined,
+          }
+        : null
+    );
+  };
+
+  const handleDelete = async () => {
+    if (!selectedContact) return;
+    await fetch("/api/contacts", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: selectedContact.id }),
+    });
+    setSelectedContact(null);
+    setEditing(false);
+    fetchContacts();
+  };
+
+  const handleCloseDetail = (open: boolean) => {
+    if (!open) {
+      setSelectedContact(null);
+      setEditing(false);
+    }
   };
 
   return (
@@ -211,6 +310,13 @@ export default function ContactsPage() {
               placeholder="Tags (comma-separated)"
               className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20"
             />
+            <textarea
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              placeholder="Notes"
+              rows={3}
+              className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20 resize-none"
+            />
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" size="sm" onClick={() => setShowAdd(false)}>
                 Cancel
@@ -227,20 +333,71 @@ export default function ContactsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Contact Detail Slide-over */}
+      {/* Contact Detail Dialog */}
       <Dialog
         open={!!selectedContact}
-        onOpenChange={(open) => !open && setSelectedContact(null)}
+        onOpenChange={handleCloseDetail}
       >
         <DialogContent className="sm:max-w-[450px] bg-surface-1 border-border">
-          {selectedContact && (
+          {selectedContact && !editing && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-foreground">
-                  {selectedContact.name}
-                </DialogTitle>
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="text-foreground">
+                    {selectedContact.name}
+                  </DialogTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={startEditing}
+                    className="text-foreground/40 hover:text-foreground"
+                  >
+                    <PencilIcon className="size-3.5" />
+                    Edit
+                  </Button>
+                </div>
               </DialogHeader>
-              <div className="space-y-4 mt-2">
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                {selectedContact.phone && (
+                  <>
+                    <a href={`tel:${selectedContact.phone}`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl border-border text-foreground/60 hover:text-foreground hover:border-accent/30"
+                      >
+                        <PhoneIcon className="size-3.5" />
+                        Call
+                      </Button>
+                    </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push(`/sms?phone=${encodeURIComponent(selectedContact.phone!)}`)}
+                      className="rounded-xl border-border text-foreground/60 hover:text-foreground hover:border-accent/30"
+                    >
+                      <MessageCircleIcon className="size-3.5" />
+                      Text
+                    </Button>
+                  </>
+                )}
+                {selectedContact.email && (
+                  <a href={`mailto:${selectedContact.email}`}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-border text-foreground/60 hover:text-foreground hover:border-accent/30"
+                    >
+                      <MailIcon className="size-3.5" />
+                      Email
+                    </Button>
+                  </a>
+                )}
+              </div>
+
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <div className="text-sm">
                     <span className="text-foreground/40">Email: </span>
@@ -276,6 +433,103 @@ export default function ContactsPage() {
                   <div className="text-xs text-foreground/25">
                     Added: {new Date(selectedContact.createdAt).toLocaleDateString()}
                   </div>
+                </div>
+
+                {/* Delete button */}
+                <div className="pt-2 border-t border-border">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDelete}
+                    className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  >
+                    <TrashIcon className="size-3.5" />
+                    Delete Contact
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Edit mode */}
+          {selectedContact && editing && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="text-foreground">Edit Contact</DialogTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={cancelEditing}
+                    className="text-foreground/40 hover:text-foreground"
+                  >
+                    <XIcon className="size-3.5" />
+                    Cancel
+                  </Button>
+                </div>
+              </DialogHeader>
+              <div className="space-y-3 mt-2">
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Full name *"
+                  className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20"
+                />
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="Email address *"
+                  className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20"
+                />
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="Phone number"
+                  className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20"
+                />
+                <input
+                  type="text"
+                  value={editCompany}
+                  onChange={(e) => setEditCompany(e.target.value)}
+                  placeholder="Company"
+                  className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20"
+                />
+                <input
+                  type="text"
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  placeholder="Tags (comma-separated)"
+                  className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20"
+                />
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Notes"
+                  rows={3}
+                  className="w-full bg-surface-2/40 rounded-xl px-3 py-2.5 text-sm text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-accent/30 placeholder:text-foreground/20 resize-none"
+                />
+                <div className="flex justify-between pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDelete}
+                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  >
+                    <TrashIcon className="size-3.5" />
+                    Delete
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={!editName.trim() || !editEmail.trim()}
+                    className="bg-accent hover:bg-accent/90 text-foreground rounded-xl"
+                  >
+                    <SaveIcon className="size-3.5" />
+                    Save
+                  </Button>
                 </div>
               </div>
             </>

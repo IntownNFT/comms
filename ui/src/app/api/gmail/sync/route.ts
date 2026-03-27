@@ -179,6 +179,17 @@ export async function POST(req: Request) {
 
         const isSent = labelIds.includes("SENT") || fromEmail === account.email;
 
+        // Extract List-Unsubscribe header for one-click unsubscribe
+        const listUnsub = getHeader(headers, "List-Unsubscribe");
+        let unsubscribeUrl: string | undefined;
+        if (listUnsub) {
+          // Extract HTTPS URL (preferred) or mailto from the header
+          // Format: <https://example.com/unsub>, <mailto:unsub@example.com>
+          const httpsMatch = listUnsub.match(/<(https?:\/\/[^>]+)>/);
+          const mailtoMatch = listUnsub.match(/<(mailto:[^>]+)>/);
+          unsubscribeUrl = httpsMatch?.[1] || mailtoMatch?.[1];
+        }
+
         addEmail({
           from: fromEmail,
           fromName: fromName || fromEmail,
@@ -193,6 +204,7 @@ export async function POST(req: Request) {
           folder: isSent ? "sent" : "inbox",
           threadId: gmailMsgId,
           gmailMessageId: msgRef.id || undefined,
+          unsubscribeUrl,
         });
 
         existingThreadIds.add(gmailMsgId);

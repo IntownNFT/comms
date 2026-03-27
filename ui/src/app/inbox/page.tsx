@@ -37,11 +37,19 @@ import {
   SendIcon,
   SparklesIcon,
   Loader2Icon as Loader2,
+  MailOpenIcon,
+  ReceiptTextIcon,
+  BellIcon,
+  MegaphoneIcon,
+  NewspaperIcon,
+  LinkIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+type EmailCategory = "primary" | "transactions" | "updates" | "promotions" | "newsletters";
 
 interface Email {
   id: string;
@@ -63,6 +71,8 @@ interface Email {
   aiSummary?: string;
   aiDraftReply?: string;
   project?: string;
+  category?: EmailCategory;
+  unsubscribeUrl?: string;
 }
 
 interface GmailStatus {
@@ -76,6 +86,16 @@ type SortBy = "time" | "subject" | "sender" | "priority";
 type SortDir = "desc" | "asc";
 type StatusFilter = "all" | "unread" | "flagged";
 type FolderFilter = "all" | "inbox" | "sent" | "drafts";
+type CategoryFilter = "all" | EmailCategory;
+
+const CATEGORY_TABS: { value: CategoryFilter; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: "all", label: "All Mail", icon: InboxIcon },
+  { value: "primary", label: "Primary", icon: MailOpenIcon },
+  { value: "transactions", label: "Transactions", icon: ReceiptTextIcon },
+  { value: "updates", label: "Updates", icon: BellIcon },
+  { value: "promotions", label: "Promotions", icon: MegaphoneIcon },
+  { value: "newsletters", label: "Newsletters", icon: NewspaperIcon },
+];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -364,9 +384,20 @@ function EmailRow({
         <div className="text-xs text-muted-foreground/70 truncate mt-0.5">
           {email.aiSummary || email.preview}
         </div>
-        {/* AI tags & priority */}
-        {(email.tags?.length || email.priority != null) && (
-          <div className="flex items-center gap-1.5 mt-1.5">
+        {/* AI tags, category & priority */}
+        {(email.tags?.length || email.priority != null || email.category) && (
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            {email.category && email.category !== "primary" && (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                email.category === "transactions" ? "bg-emerald-500/10 text-emerald-500" :
+                email.category === "updates" ? "bg-blue-500/10 text-blue-400" :
+                email.category === "promotions" ? "bg-orange-500/10 text-orange-400" :
+                email.category === "newsletters" ? "bg-purple-500/10 text-purple-400" :
+                "bg-surface-2 text-muted-foreground/50"
+              }`}>
+                {email.category}
+              </span>
+            )}
             {email.priority != null && email.priority !== 0 && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                 email.priority >= 8 ? "bg-destructive/12 text-destructive" :
@@ -380,6 +411,11 @@ function EmailRow({
             {email.senderType === "auto" && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-2 text-muted-foreground/60">
                 Auto
+              </span>
+            )}
+            {email.unsubscribeUrl && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-destructive/8 text-destructive/60">
+                Unsub
               </span>
             )}
             {email.tags?.slice(0, 3).map(tag => (
@@ -559,6 +595,18 @@ ${replyDraft}`,
           >
             <TrashIcon className="size-4" />
           </Button>
+          {email.unsubscribeUrl && (
+            <a
+              href={email.unsubscribeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2 py-1 ml-1 text-[11px] font-medium text-muted-foreground hover:text-destructive border border-border/50 rounded-lg hover:border-destructive/30 transition-colors"
+              title="Unsubscribe from this sender"
+            >
+              <LinkIcon className="size-3" />
+              Unsubscribe
+            </a>
+          )}
         </div>
       </div>
 
@@ -735,6 +783,7 @@ export default function InboxPage() {
   const [senderFilter, setSenderFilter] = useState<"all" | "human" | "auto">("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [showSearch, setShowSearch] = useState(false);
 
   // Projects from AI settings
@@ -924,7 +973,15 @@ export default function InboxPage() {
       }
     }
 
-    return { unread, flagged, inbox, sent, drafts, human, auto, total: emails.length, tagCounts, projectCounts };
+    // Category counts
+    const categoryCounts: Record<string, number> = {};
+    for (const e of emails) {
+      if (e.category) {
+        categoryCounts[e.category] = (categoryCounts[e.category] || 0) + 1;
+      }
+    }
+
+    return { unread, flagged, inbox, sent, drafts, human, auto, total: emails.length, tagCounts, projectCounts, categoryCounts };
   }, [emails, projects]);
 
   const filteredEmails = useMemo(() => {
@@ -937,6 +994,9 @@ export default function InboxPage() {
     // Folder filter
     if (folderFilter !== "all")
       result = result.filter((e) => e.folder === folderFilter);
+
+    // Category filter
+    if (categoryFilter !== "all") result = result.filter((e) => e.category === categoryFilter);
 
     // Sender type filter
     if (senderFilter !== "all") result = result.filter((e) => e.senderType === senderFilter);
@@ -971,7 +1031,7 @@ export default function InboxPage() {
     result = sortEmails(result, sortBy, sortDir);
 
     return result;
-  }, [emails, statusFilter, folderFilter, senderFilter, tagFilter, projectFilter, projects, searchQuery, sortBy, sortDir]);
+  }, [emails, statusFilter, folderFilter, categoryFilter, senderFilter, tagFilter, projectFilter, projects, searchQuery, sortBy, sortDir]);
 
   const groupedEmails = useMemo(
     () => groupEmails(filteredEmails, groupBy),
@@ -1372,6 +1432,38 @@ export default function InboxPage() {
             <PanelLeftOpenIcon className="size-4" />
           </Button>
         </div>
+
+        {/* Category tabs */}
+        {!selectedEmail && (
+          <div className="flex items-center gap-0.5 px-3 border-b border-border/30 flex-shrink-0 bg-background overflow-x-auto">
+            {CATEGORY_TABS.map(({ value, label, icon: Icon }) => {
+              const count = value === "all" ? counts.total : (counts.categoryCounts[value] || 0);
+              const isActive = categoryFilter === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setCategoryFilter(value)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? "border-accent text-accent"
+                      : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:border-border/50"
+                  }`}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                  {count > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                      isActive ? "bg-accent/10 text-accent" : "bg-surface-2 text-muted-foreground/40"
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Content area: list OR detail (full width swap like Gmail) */}
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">

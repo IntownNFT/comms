@@ -4,6 +4,8 @@ import { homedir } from "node:os";
 
 export type DomainType = "personal" | "business";
 
+export type EmailCategory = "primary" | "transactions" | "updates" | "promotions" | "newsletters";
+
 export interface Email {
   id: string;
   from: string;
@@ -29,6 +31,9 @@ export interface Email {
   aiSummary?: string;
   aiDraftReply?: string;
   project?: string;
+  category?: EmailCategory;
+  // Gmail headers
+  unsubscribeUrl?: string;
 }
 
 /** Free/consumer email provider domains */
@@ -225,6 +230,7 @@ export function updateEmailAI(id: string, aiData: {
   senderType?: "human" | "auto";
   aiSummary?: string;
   aiDraftReply?: string;
+  category?: EmailCategory;
 }): Email | null {
   const emails = seedIfEmpty();
   const email = emails.find((e) => e.id === id);
