@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { loadCommsEnv, saveCommsEnvVar } from "@/lib/env";
 import { requireAuth } from "@/lib/api-auth";
 
-export async function POST() {
+export async function POST(req: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -18,25 +18,31 @@ export async function POST() {
     );
   }
 
+  const body = await req.json().catch(() => ({}));
+  const selectedNumber = body.phoneNumber as string | undefined;
+
   try {
     const twilio = (await import("twilio")).default;
     const client = twilio(accountSid, authToken);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
 
-    // 1. Search for a toll-free number
-    const available = await client.availablePhoneNumbers("US").tollFree.list({
-      smsEnabled: true,
-      voiceEnabled: true,
-      limit: 1,
-    });
-
-    if (available.length === 0) {
-      return NextResponse.json({ error: "No toll-free numbers available. Try again later." }, { status: 404 });
+    // Use selected number or auto-pick first available
+    let numberToBuy = selectedNumber;
+    if (!numberToBuy) {
+      const available = await client.availablePhoneNumbers("US").tollFree.list({
+        smsEnabled: true,
+        voiceEnabled: true,
+        limit: 1,
+      });
+      if (available.length === 0) {
+        return NextResponse.json({ error: "No toll-free numbers available. Try again later." }, { status: 404 });
+      }
+      numberToBuy = available[0].phoneNumber;
     }
 
-    // 2. Purchase the number with SMS webhook
+    // Purchase the number with SMS webhook
     const purchased = await client.incomingPhoneNumbers.create({
-      phoneNumber: available[0].phoneNumber,
+      phoneNumber: numberToBuy,
       ...(appUrl ? {
         smsUrl: `${appUrl}/api/twilio/sms-webhook`,
         smsMethod: "POST",

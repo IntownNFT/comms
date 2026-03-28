@@ -807,24 +807,26 @@ interface AvailableNumber {
 // SMS Settings Section
 // ---------------------------------------------------------------------------
 
+interface TollFreeNumber {
+  phoneNumber: string;
+  friendlyName: string;
+}
+
 function SMSSettingsSection() {
   const [smsNumber, setSmsNumber] = useState<string | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [buying, setBuying] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Load current SMS number from auth/status
+  // Number picker state
+  const [availableNumbers, setAvailableNumbers] = useState<TollFreeNumber[]>([]);
+  const [loadingNumbers, setLoadingNumbers] = useState(false);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+
   useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => r.json())
-      .then((data) => {
-        setSmsNumber(data.twilio?.smsNumber ?? data.twilio?.fromNumber ?? null);
-      })
-      .catch(() => {});
-    // Check toll-free verification status
     fetch("/api/twilio/sms-status")
       .then((r) => r.json())
       .then((data) => {
@@ -835,24 +837,47 @@ function SMSSettingsSection() {
       .finally(() => setLoading(false));
   }, []);
 
-  const buyTollFree = async () => {
-    setBuying(true);
+  const loadNumbers = async () => {
+    setLoadingNumbers(true);
+    setError("");
+    try {
+      const res = await fetch("/api/twilio/phone-numbers?type=tollFree");
+      const data = await res.json();
+      setAvailableNumbers((data.numbers || []).map((n: { phoneNumber: string; friendlyName: string }) => ({
+        phoneNumber: n.phoneNumber,
+        friendlyName: n.friendlyName,
+      })));
+      setShowPicker(true);
+    } catch {
+      setError("Failed to load available numbers");
+    }
+    setLoadingNumbers(false);
+  };
+
+  const purchaseNumber = async (phoneNumber: string) => {
+    setPurchasing(phoneNumber);
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/twilio/sms-setup", { method: "POST" });
+      const res = await fetch("/api/twilio/sms-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber }),
+      });
       const data = await res.json();
       if (data.error) {
         setError(data.error);
       } else {
         setSmsNumber(data.phoneNumber);
         setVerificationStatus(data.verificationStatus || "PENDING_REVIEW");
-        setSuccess(`Toll-free number ${data.phoneNumber} purchased and verification submitted!`);
+        setSuccess(`${data.phoneNumber} is now your SMS number! Verification submitted.`);
+        setShowPicker(false);
+        setAvailableNumbers([]);
       }
     } catch {
-      setError("Failed to set up SMS number");
+      setError("Failed to purchase number");
     }
-    setBuying(false);
+    setPurchasing(null);
   };
 
   const checkStatus = async () => {
@@ -917,16 +942,54 @@ function SMSSettingsSection() {
               )}
             </>
           ) : (
-            <div className="text-center py-4">
-              <MessageCircleIcon className="size-8 text-muted-foreground/20 mx-auto mb-3" />
-              <div className="text-sm text-muted-foreground mb-1">No SMS number configured</div>
-              <div className="text-xs text-muted-foreground/60 mb-4">
-                Get a toll-free number to send and receive text messages. Includes automatic carrier verification.
-              </div>
-              <Button size="sm" onClick={buyTollFree} disabled={buying} className="gap-2">
-                {buying ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlusIcon className="size-3.5" />}
-                {buying ? "Setting up..." : "Get Toll-Free SMS Number"}
-              </Button>
+            <div className="space-y-4">
+              {!showPicker ? (
+                <div className="text-center py-4">
+                  <MessageCircleIcon className="size-8 text-muted-foreground/20 mx-auto mb-3" />
+                  <div className="text-sm text-muted-foreground mb-1">No SMS number configured</div>
+                  <div className="text-xs text-muted-foreground/60 mb-4">
+                    Pick a toll-free number to send and receive text messages.
+                  </div>
+                  <Button size="sm" onClick={loadNumbers} disabled={loadingNumbers} className="gap-2">
+                    {loadingNumbers ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlusIcon className="size-3.5" />}
+                    {loadingNumbers ? "Loading numbers..." : "Browse Available Numbers"}
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-foreground">Choose a toll-free number</div>
+                    <button onClick={() => { setShowPicker(false); setAvailableNumbers([]); }} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">Cancel</button>
+                  </div>
+                  {availableNumbers.length === 0 ? (
+                    <div className="text-center py-4 text-xs text-muted-foreground">No numbers found. Try again later.</div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {availableNumbers.map((n) => (
+                        <button
+                          key={n.phoneNumber}
+                          type="button"
+                          onClick={() => purchaseNumber(n.phoneNumber)}
+                          disabled={!!purchasing}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors cursor-pointer",
+                            purchasing === n.phoneNumber
+                              ? "bg-accent/10 border-accent/30"
+                              : "bg-surface-2/30 border-border hover:border-accent/30 hover:bg-accent/5"
+                          )}
+                        >
+                          <span className="text-sm font-medium text-foreground">{n.friendlyName}</span>
+                          {purchasing === n.phoneNumber && <Loader2Icon className="size-3.5 animate-spin text-accent" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Button size="sm" variant="outline" onClick={loadNumbers} disabled={loadingNumbers} className="gap-1.5">
+                    <RefreshCwIcon className="size-3" />
+                    Load more
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
