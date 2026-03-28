@@ -211,7 +211,7 @@ export async function POST(req: Request) {
         existingThreadIds.add(gmailMsgId);
         imported++;
 
-        // Log touch point on matching contact
+        // Log touch point on matching contact (auto-create if new sender)
         const ts = date || new Date(Number(msg.internalDate) || Date.now()).toISOString();
         logInteraction({
           email: isSent ? (to || "").split(",")[0].trim() : fromEmail,
@@ -221,6 +221,7 @@ export async function POST(req: Request) {
             summary: `${isSent ? "Sent" : "Received"}: ${subject}`,
             timestamp: ts,
           },
+          autoCreate: true,
         });
       } catch (msgErr) {
         // Skip individual message errors, continue syncing
