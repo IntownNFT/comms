@@ -65,7 +65,9 @@ export function getRecentConversations(limit = 20): { phoneNumber: string; lastM
 
   for (const m of msgs) {
     // Use the non-self number as the conversation key
-    const selfNumbers = (process.env.TWILIO_FROM_NUMBER || "").replace(/\D/g, "");
+    const smsNum = (process.env.TWILIO_SMS_NUMBER || "").replace(/\D/g, "");
+    const voiceNum = (process.env.TWILIO_FROM_NUMBER || "").replace(/\D/g, "");
+    const selfNumbers = smsNum || voiceNum;
     const from = m.from.replace(/\D/g, "");
     const to = m.to.replace(/\D/g, "");
     const other = from === selfNumbers || from.endsWith(selfNumbers) ? m.to : m.from;

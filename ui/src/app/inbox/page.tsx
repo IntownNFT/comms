@@ -475,8 +475,9 @@ function EmailDetail({
     setSent(false);
   }, [email.id, email.aiDraftReply]);
 
-  const polishReply = async () => {
-    if (!replyDraft.trim()) return;
+  const polishReply = async (overrideText?: string) => {
+    const text = overrideText || replyDraft;
+    if (!text.trim()) return;
     setPolishing(true);
     try {
       const res = await fetch("/api/chat", {
@@ -494,7 +495,7 @@ Subject: ${email.subject}
 Body: ${email.body.slice(0, 500)}
 
 User's rough draft:
-${replyDraft}`,
+${text}`,
             },
           ],
         }),
@@ -674,7 +675,7 @@ ${replyDraft}`,
         </div>
       </div>
 
-      {/* AI Reply Box */}
+      {/* Reply Box */}
       <div className="border-t border-border px-5 py-4 flex-shrink-0 space-y-3">
         {sent ? (
           <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-success/8 border border-success/15">
@@ -683,23 +684,47 @@ ${replyDraft}`,
           </div>
         ) : (
           <>
-            {/* Rough draft input */}
+            {/* Slash command hint */}
+            {replyDraft.startsWith("/") && !polishedReply && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/[0.06] border border-accent/10">
+                <SparklesIcon className="size-3 text-accent/60" />
+                <span className="text-[11px] text-accent/60">
+                  Type your reply after <code className="bg-accent/10 px-1 rounded">/polish</code> and press <kbd className="bg-accent/10 px-1 rounded text-[10px]">Enter</kbd> to AI-polish it into a draft
+                </span>
+              </div>
+            )}
+
+            {/* Reply input */}
             <div className="relative">
               <textarea
                 ref={textareaRef}
                 value={replyDraft}
                 onChange={(e) => setReplyDraft(e.target.value)}
-                placeholder={`Type your rough reply to ${email.fromName}... AI will polish it`}
+                placeholder={`/polish your rough reply here... or just type to send raw`}
                 rows={2}
-                className="w-full bg-surface-2/40 rounded-xl px-4 py-3 pr-24 text-sm text-foreground border border-border placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20 resize-none transition-all"
+                className="w-full bg-surface-2/40 rounded-xl px-4 py-3 pr-12 text-sm text-foreground border border-border placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/20 resize-none transition-all"
                 onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    const text = replyDraft.trim();
+                    if (!text) return;
+                    // /polish command — strip prefix and polish
+                    if (text.toLowerCase().startsWith("/polish")) {
+                      e.preventDefault();
+                      const rawText = text.replace(/^\/polish\s*/i, "").trim();
+                      if (rawText) {
+                        setReplyDraft(rawText);
+                        polishReply(rawText);
+                      }
+                    }
+                  }
+                  // Cmd+Enter always polishes
                   if (e.key === "Enter" && e.metaKey) {
                     e.preventDefault();
                     polishReply();
                   }
                 }}
               />
-              <div className="absolute right-2 bottom-2 flex items-center gap-1">
+              <div className="absolute right-2 bottom-2">
                 <Button
                   size="icon-sm"
                   variant="ghost"
@@ -718,7 +743,7 @@ ${replyDraft}`,
               <div className="rounded-xl bg-surface-1 border border-border overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50 bg-surface-2/30">
                   <SparklesIcon className="size-3 text-accent/50" />
-                  <span className="text-[10px] font-semibold text-accent/50 uppercase tracking-wider">AI Polished Reply</span>
+                  <span className="text-[10px] font-semibold text-accent/50 uppercase tracking-wider">AI Polished Draft</span>
                 </div>
                 <div className="px-4 py-3 text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-[200px] overflow-y-auto">
                   {polishedReply}
@@ -726,8 +751,8 @@ ${replyDraft}`,
               </div>
             )}
 
-            {/* Send button */}
-            {(polishedReply || replyDraft.trim()) && (
+            {/* Action buttons */}
+            {(polishedReply || (replyDraft.trim() && !replyDraft.startsWith("/"))) && (
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -736,20 +761,25 @@ ${replyDraft}`,
                   className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl"
                 >
                   {sending ? <Loader2 className="size-3.5 animate-spin" /> : <SendIcon className="size-3.5" />}
-                  {polishedReply ? "Send Polished Reply" : "Send Raw Reply"}
+                  {polishedReply ? "Send Draft" : "Send Reply"}
                 </Button>
                 {polishedReply && (
-                  <button
-                    onClick={() => {
-                      setReplyDraft(polishedReply);
-                      setPolishedReply("");
-                    }}
-                    className="text-xs text-muted-foreground hover:text-foreground/60 transition-colors"
-                  >
-                    Edit polished text
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setReplyDraft(polishedReply); setPolishedReply(""); }}
+                      className="text-xs text-muted-foreground hover:text-foreground/60 transition-colors cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => { setPolishedReply(""); setReplyDraft(""); }}
+                      className="text-xs text-muted-foreground hover:text-destructive/60 transition-colors cursor-pointer"
+                    >
+                      Discard
+                    </button>
+                  </>
                 )}
-                <span className="text-[10px] text-muted-foreground/50 ml-auto">
+                <span className="text-[10px] text-muted-foreground/40 ml-auto">
                   Goes to approval queue
                 </span>
               </div>

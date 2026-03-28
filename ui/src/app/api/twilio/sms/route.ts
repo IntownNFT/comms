@@ -48,11 +48,11 @@ export async function POST(req: Request) {
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  const fromNumber = process.env.TWILIO_SMS_NUMBER || process.env.TWILIO_FROM_NUMBER;
 
   if (!accountSid || !authToken || !fromNumber) {
     return NextResponse.json(
-      { error: "Missing Twilio credentials (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)" },
+      { error: "Missing Twilio credentials. Set TWILIO_SMS_NUMBER (toll-free) or TWILIO_FROM_NUMBER in Settings." },
       { status: 500 }
     );
   }
