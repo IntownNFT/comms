@@ -16,13 +16,12 @@ import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import { redirect } from "next/navigation";
 
-const isCloudMode = !!process.env.NEXT_PUBLIC_CONVEX_URL;
+const isManaged = process.env.NEXT_PUBLIC_COMMS_MANAGED === "true";
 
 type Mode = "signin" | "signup";
 
 export default function LoginPage() {
-  // Local mode has no login page — API key is configured in Settings
-  if (!isCloudMode) {
+  if (!isManaged) {
     redirect("/");
   }
 
@@ -55,35 +54,19 @@ function CloudLoginPage() {
     setError("");
 
     try {
-      if (mode === "signup") {
-        const { error: signUpError } = await authClient.signUp.email({
-          email,
-          password,
-          name: name || email.split("@")[0],
-        });
-        if (signUpError) {
-          setError(signUpError.message || "Sign up failed");
-          setLoading(false);
-          return;
-        }
-      } else {
-        const { error: signInError } = await authClient.signIn.email({
-          email,
-          password,
-        });
-        if (signInError) {
-          setError(signInError.message || "Sign in failed");
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Ensure user record exists in credits system
-      await fetch("/api/credits", {
+      const endpoint = mode === "signup" ? "/api/auth/signup" : "/api/auth/signin";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, name: name || email.split("@")[0] }),
+        body: JSON.stringify({ email, password, name: name || email.split("@")[0] }),
       });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || (mode === "signup" ? "Sign up failed" : "Sign in failed"));
+        setLoading(false);
+        return;
+      }
 
       setSuccess(true);
       setTimeout(() => { window.location.href = callbackUrl; }, 800);

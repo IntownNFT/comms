@@ -20,7 +20,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { signOut, useSession } from "@/lib/auth-client";
+import { useSession } from "@/lib/auth-client";
 
 const navItems = [
   { href: "/", label: "Chat", icon: MessageSquareIcon },
@@ -83,7 +83,7 @@ export function Sidebar() {
     };
   }, [menuOpen, updateMenuPosition]);
 
-  const isCloudMode = !!process.env.NEXT_PUBLIC_CONVEX_URL;
+  const isManaged = process.env.NEXT_PUBLIC_COMMS_MANAGED === "true";
 
   return (
     <aside
@@ -204,12 +204,12 @@ export function Sidebar() {
 
             <div className="h-px bg-border my-1.5 mx-3" />
 
-            {(session || isCloudMode) && (
+            {(session || isManaged) && (
               <button
                 type="button"
                 onClick={() => {
                   setMenuOpen(false);
-                  signOut({ fetchOptions: { onSuccess: () => { window.location.href = "/login"; } } });
+                  fetch("/api/auth/signout", { method: "POST" }).then(() => { window.location.href = "/login"; });
                 }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
               >

@@ -11,15 +11,16 @@ const PUBLIC_PATHS = [
 ];
 
 export function middleware(request: NextRequest) {
-  // Local mode (no Convex URL) = no auth required
-  if (!process.env.NEXT_PUBLIC_CONVEX_URL) {
+  // Local mode = no auth required
+  if (process.env.NEXT_PUBLIC_COMMS_MANAGED !== "true") {
     return NextResponse.next();
   }
 
   const { pathname } = request.nextUrl;
 
-  // Check for BetterAuth session cookie
+  // Check for session cookie (own auth or BetterAuth)
   const sessionToken =
+    request.cookies.get("comms-session") ??
     request.cookies.get("better-auth.session_token") ??
     request.cookies.get("__Secure-better-auth.session_token");
 

@@ -1,29 +1,36 @@
 import { NextResponse } from "next/server";
-
-const isCloudMode = !!process.env.NEXT_PUBLIC_CONVEX_URL;
+import { cookies } from "next/headers";
+import { validateSession } from "@/lib/stores/auth-store";
 
 /**
  * Returns null if the request is authorized, or a 401 Response if not.
- * In local mode (no NEXT_PUBLIC_CONVEX_URL), always passes through.
+ * In local/unmanaged mode, always passes through.
  */
 export async function requireAuth(): Promise<NextResponse | null> {
-  if (!isCloudMode) return null;
+  if (process.env.NEXT_PUBLIC_COMMS_MANAGED !== "true") return null;
 
-  // Dynamic import to avoid pulling in BetterAuth in local mode
-  const { isAuthenticated } = await import("@/lib/auth-server");
-  const authed = await isAuthenticated();
-  if (!authed) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
-  }
+  const cookieStore = await cookies();
+  const token = cookieStore.get("comms-session")?.value;
+  if (token && validateSession(token)) return null;
 
-  return null;
+  return NextResponse.json(
+    { error: "Authentication required" },
+    { status: 401 }
+  );
 }
 
 /**
- * Returns true if this is a managed deployment (operator-set keys, no user key management).
+ * Get current user from session cookie. Returns null if not authenticated.
+ */
+export async function getCurrentUser() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("comms-session")?.value;
+  if (!token) return null;
+  return validateSession(token);
+}
+
+/**
+ * Returns true if this is a managed deployment.
  */
 export function isManaged(): boolean {
   return process.env.NEXT_PUBLIC_COMMS_MANAGED === "true";
