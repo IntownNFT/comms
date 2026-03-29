@@ -1,25 +1,52 @@
-import { createAuthClient } from "better-auth/react";
-import { convexClient } from "@convex-dev/better-auth/client/plugins";
-import { polarClient } from "@polar-sh/better-auth/client";
+"use client";
 
-const isCloudMode = !!process.env.NEXT_PUBLIC_CONVEX_URL;
+import { useState, useEffect } from "react";
 
-// Local mode: no-op auth client that never touches the network
-const noopSession = { data: null, isPending: false, error: null };
-const noopClient = {
-  useSession: () => noopSession,
-  signIn: { email: async () => ({ error: null }) },
-  signUp: { email: async () => ({ error: null }) },
-  signOut: async () => {},
-  checkoutEmbed: async () => {},
-} as unknown as ReturnType<typeof createAuthClient>;
-
-function buildClient() {
-  if (!isCloudMode) return noopClient;
-  return createAuthClient({
-    plugins: [convexClient(), polarClient()],
-  });
+interface SessionData {
+  user: { id: string; email: string; name: string; plan?: string } | null;
 }
 
-export const authClient = buildClient();
-export const { useSession, signIn, signUp, signOut } = authClient;
+const cache: { data: SessionData | null; fetched: boolean } = { data: null, fetched: false };
+
+export function useSession() {
+  const [session, setSession] = useState<SessionData>(cache.data ?? { user: null });
+  const [isPending, setIsPending] = useState(!cache.fetched);
+
+  useEffect(() => {
+    if (cache.fetched) {
+      setSession(cache.data ?? { user: null });
+      setIsPending(false);
+      return;
+    }
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((data) => {
+        cache.data = data;
+        cache.fetched = true;
+        setSession(data);
+      })
+      .catch(() => {
+        cache.data = { user: null };
+        cache.fetched = true;
+        setSession({ user: null });
+      })
+      .finally(() => setIsPending(false));
+  }, []);
+
+  return { data: session, isPending, error: null };
+}
+
+export async function signOut() {
+  cache.data = null;
+  cache.fetched = false;
+  await fetch("/api/auth/signout", { method: "POST" });
+  window.location.href = "/login";
+}
+
+// Backwards-compat exports
+export const authClient = {
+  useSession,
+  signIn: { email: async () => ({ error: null }) },
+  signUp: { email: async () => ({ error: null }) },
+  signOut,
+};
