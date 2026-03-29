@@ -1462,7 +1462,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then(setSettings);
-    fetch("/api/auth").then((r) => r.json()).then(setAuthStatus);
+    fetch("/api/auth/session").then((r) => r.json()).then((data) => {
+      setAuthStatus({ session: data.user ? { user: data.user } : null });
+    }).catch(() => setAuthStatus(null));
   }, []);
 
   useEffect(() => {
