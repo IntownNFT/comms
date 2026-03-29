@@ -1461,7 +1461,18 @@ export default function SettingsPage() {
   const userEmail = session?.user?.email;
 
   useEffect(() => {
-    fetch("/api/settings").then((r) => r.json()).then(setSettings);
+    fetch("/api/settings").then((r) => {
+      if (!r.ok) return null;
+      return r.json();
+    }).then((data) => {
+      if (data) setSettings({
+        agentModes: data.agentModes || {},
+        fromEmail: data.fromEmail || "",
+        anthropicModel: data.anthropicModel || "gemini-2.5-flash",
+        temperature: data.temperature ?? 0.7,
+        notificationsEnabled: data.notificationsEnabled ?? true,
+      });
+    }).catch(() => {});
     fetch("/api/auth/session").then((r) => r.json()).then((data) => {
       setAuthStatus({ session: data.user ? { user: data.user } : null });
     }).catch(() => setAuthStatus(null));
@@ -1647,7 +1658,7 @@ export default function SettingsPage() {
               <strong>Draft</strong> = queued for approval. <strong>Manual</strong> = requires explicit command.
             </p>
             <div className="space-y-2">
-              {Object.entries(settings.agentModes).map(([tool, mode]) => (
+              {Object.entries(settings.agentModes || {}).map(([tool, mode]) => (
                 <div
                   key={tool}
                   className="flex items-center justify-between p-3 rounded-xl bg-surface-1 border border-border"
