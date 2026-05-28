@@ -43,13 +43,23 @@ import {
   MegaphoneIcon,
   NewspaperIcon,
   LinkIcon,
+  UsersIcon,
+  MessageSquareIcon,
+  AlertOctagonIcon,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type EmailCategory = "primary" | "transactions" | "updates" | "promotions" | "newsletters";
+type EmailCategory =
+  | "primary"
+  | "social"
+  | "promotions"
+  | "updates"
+  | "forums"
+  | "transactions"
+  | "newsletters";
 
 interface Email {
   id: string;
@@ -85,15 +95,17 @@ type GroupBy = "date" | "sender" | "folder";
 type SortBy = "time" | "subject" | "sender" | "priority";
 type SortDir = "desc" | "asc";
 type StatusFilter = "all" | "unread" | "flagged";
-type FolderFilter = "all" | "inbox" | "sent" | "drafts";
+type FolderFilter = "all" | "inbox" | "sent" | "drafts" | "spam";
 type CategoryFilter = "all" | EmailCategory;
 
 const CATEGORY_TABS: { value: CategoryFilter; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: "all", label: "All Mail", icon: InboxIcon },
   { value: "primary", label: "Primary", icon: MailOpenIcon },
-  { value: "transactions", label: "Transactions", icon: ReceiptTextIcon },
-  { value: "updates", label: "Updates", icon: BellIcon },
+  { value: "social", label: "Social", icon: UsersIcon },
   { value: "promotions", label: "Promotions", icon: MegaphoneIcon },
+  { value: "updates", label: "Updates", icon: BellIcon },
+  { value: "forums", label: "Forums", icon: MessageSquareIcon },
+  { value: "transactions", label: "Transactions", icon: ReceiptTextIcon },
   { value: "newsletters", label: "Newsletters", icon: NewspaperIcon },
 ];
 
@@ -339,12 +351,23 @@ function EmailRow({
     <div
       onClick={onClick}
       className={`
-        group flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150 border-b border-border/50
-        ${isSelected ? "bg-accent/8 border-l-2 border-l-accent" : "border-l-2 border-l-transparent"}
-        ${!email.read && !isSelected ? "bg-surface-1/40" : ""}
-        hover:bg-surface-2/30
+        group relative flex items-center gap-3 pl-4 pr-4 py-3 cursor-pointer transition-colors duration-150 border-b border-border/40
+        ${isSelected ? "bg-accent/10" : ""}
+        ${!email.read && !isSelected ? "bg-surface-1/60" : ""}
+        hover:bg-surface-2/40
       `}
     >
+      {/* Unread accent bar */}
+      <span
+        className={`absolute left-0 top-0 bottom-0 w-[3px] transition-colors ${
+          isSelected
+            ? "bg-accent"
+            : !email.read
+              ? "bg-accent/70"
+              : "bg-transparent"
+        }`}
+      />
+
       {/* Avatar */}
       <div className="flex-shrink-0 self-start mt-0.5">
         <Avatar name={email.fromName} />
@@ -352,36 +375,33 @@ function EmailRow({
 
       {/* Content */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-baseline gap-2">
           <span
             className={`text-[13px] truncate ${
               !email.read
                 ? "font-semibold text-foreground"
-                : "font-medium text-foreground/70"
+                : "font-normal text-muted-foreground"
             }`}
           >
             {email.fromName}
           </span>
-          {!email.read && (
-            <div className="w-[7px] h-[7px] rounded-full bg-accent flex-shrink-0" />
-          )}
           {email.flagged && (
-            <StarIcon className="size-3.5 text-accent-amber fill-accent-amber flex-shrink-0" />
+            <StarIcon className="size-3.5 text-accent-amber fill-accent-amber flex-shrink-0 self-center" />
           )}
-          <span className="flex-shrink-0 text-[11px] text-muted-foreground/70 tabular-nums ml-auto">
+          <span className="flex-shrink-0 text-[11px] text-muted-foreground/60 tabular-nums ml-auto">
             {relativeTime(email.timestamp)}
           </span>
         </div>
         <div
           className={`text-[13px] truncate mt-0.5 ${
             !email.read
-              ? "font-medium text-foreground/85"
-              : "text-muted-foreground"
+              ? "font-medium text-foreground"
+              : "text-foreground/60"
           }`}
         >
           {email.subject}
         </div>
-        <div className="text-xs text-muted-foreground/70 truncate mt-0.5">
+        <div className="text-[12px] text-muted-foreground/60 truncate mt-0.5">
           {email.aiSummary || email.preview}
         </div>
         {/* AI tags, category & priority */}
@@ -393,6 +413,8 @@ function EmailRow({
                 email.category === "updates" ? "bg-blue-500/10 text-blue-400" :
                 email.category === "promotions" ? "bg-orange-500/10 text-orange-400" :
                 email.category === "newsletters" ? "bg-purple-500/10 text-purple-400" :
+                email.category === "social" ? "bg-pink-500/10 text-pink-400" :
+                email.category === "forums" ? "bg-indigo-500/10 text-indigo-400" :
                 "bg-surface-2 text-muted-foreground/50"
               }`}>
                 {email.category}
@@ -834,7 +856,7 @@ export default function InboxPage() {
   const fetchEmails = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/inbox?limit=200");
+      const res = await fetch("/api/inbox?limit=2000");
       const data = await res.json();
       setEmails(data.emails ?? []);
       setLastSyncTime(new Date());
@@ -861,7 +883,7 @@ export default function InboxPage() {
         await fetch("/api/gmail/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ account, limit: 30 }),
+          body: JSON.stringify({ account, limit: 200 }),
         });
         await fetchEmails();
       } catch {
@@ -975,6 +997,7 @@ export default function InboxPage() {
     const inbox = emails.filter((e) => e.folder === "inbox").length;
     const sent = emails.filter((e) => e.folder === "sent").length;
     const drafts = emails.filter((e) => e.folder === "drafts").length;
+    const spam = emails.filter((e) => e.folder === "spam").length;
     const human = emails.filter((e) => e.senderType === "human").length;
     const auto = emails.filter((e) => e.senderType === "auto").length;
 
@@ -1011,7 +1034,7 @@ export default function InboxPage() {
       }
     }
 
-    return { unread, flagged, inbox, sent, drafts, human, auto, total: emails.length, tagCounts, projectCounts, categoryCounts };
+    return { unread, flagged, inbox, sent, drafts, spam, human, auto, total: emails.length, tagCounts, projectCounts, categoryCounts };
   }, [emails, projects]);
 
   const filteredEmails = useMemo(() => {
@@ -1080,7 +1103,7 @@ export default function InboxPage() {
   // -------------------------------------------------------------------------
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* ================================================================= */}
       {/* LEFT SIDEBAR */}
       {/* ================================================================= */}
@@ -1303,6 +1326,7 @@ export default function InboxPage() {
                   { value: "inbox", label: "Inbox", count: counts.inbox },
                   { value: "sent", label: "Sent", count: counts.sent },
                   { value: "drafts", label: "Drafts", count: counts.drafts },
+                  { value: "spam", label: "Spam", count: counts.spam },
                 ] as const).map((opt) => (
                   <button
                     key={opt.value}
@@ -1551,11 +1575,12 @@ export default function InboxPage() {
             <ScrollArea className="flex-1 min-h-0">
               {groupedEmails.map((group) => (
                 <div key={group.label}>
-                  <div className="sticky top-0 z-10 px-4 py-2 bg-background/90 backdrop-blur-md border-b border-border/30">
-                    <span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                  <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-1.5 bg-background/85 backdrop-blur-md border-b border-border/40">
+                    <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground/70 uppercase">
                       {group.label}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/30 ml-2">
+                    <span className="h-px flex-1 bg-border/40" />
+                    <span className="text-[10px] tabular-nums text-muted-foreground/40">
                       {group.emails.length}
                     </span>
                   </div>

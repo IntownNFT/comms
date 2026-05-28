@@ -20,16 +20,38 @@ export async function GET() {
   }
 
   let verificationStatus = user?.smsVerificationStatus || null;
+  let verificationDetails = null;
 
-  // Fetch live status from Twilio if we have a verification SID
+  // Fetch live status + details from Twilio if we have a verification SID
   if (verificationSid && accountSid && authToken) {
     try {
       const twilio = (await import("twilio")).default;
       const client = twilio(accountSid, authToken);
       const v = await client.messaging.v1.tollfreeVerifications(verificationSid).fetch();
       verificationStatus = v.status;
+      verificationDetails = {
+        businessName: v.businessName,
+        businessWebsite: v.businessWebsite,
+        businessType: v.businessType,
+        businessStreetAddress: v.businessStreetAddress,
+        businessCity: v.businessCity,
+        businessStateProvinceRegion: v.businessStateProvinceRegion,
+        businessPostalCode: v.businessPostalCode,
+        businessCountry: v.businessCountry,
+        businessContactFirstName: v.businessContactFirstName,
+        businessContactLastName: v.businessContactLastName,
+        businessContactEmail: v.businessContactEmail,
+        notificationEmail: v.notificationEmail,
+        useCaseSummary: v.useCaseSummary,
+        productionMessageSample: v.productionMessageSample,
+        messageVolume: v.messageVolume,
+        optInType: v.optInType,
+        rejectionReason: v.rejectionReason,
+        dateCreated: v.dateCreated,
+        dateUpdated: v.dateUpdated,
+      };
     } catch { /* silent */ }
   }
 
-  return NextResponse.json({ smsNumber, verificationStatus });
+  return NextResponse.json({ smsNumber, verificationStatus, verificationDetails });
 }

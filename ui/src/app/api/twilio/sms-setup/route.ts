@@ -21,6 +21,30 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const selectedNumber = body.phoneNumber as string | undefined;
+  const biz = body.business as {
+    name: string;
+    website: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    country?: string;
+    type?: string;
+    registrationNumber?: string;
+    useCaseSummary?: string;
+    messageSample?: string;
+    messageVolume?: string;
+  } | undefined;
+
+  if (!biz?.name || !biz?.email || !biz?.street || !biz?.city || !biz?.state || !biz?.zip || !biz?.firstName || !biz?.lastName) {
+    return NextResponse.json(
+      { error: "Business details are required. Please fill in all required fields." },
+      { status: 400 }
+    );
+  }
 
   try {
     const twilio = (await import("twilio")).default;
@@ -50,7 +74,7 @@ export async function POST(req: Request) {
       } : {}),
     });
 
-    // 3. Save as SMS number — per-user in cloud mode, global fallback
+    // Save as SMS number — per-user in cloud mode, global fallback
     const user = await getCurrentUser();
     if (user) {
       updateUser(user.id, {
@@ -61,36 +85,41 @@ export async function POST(req: Request) {
     saveCommsEnvVar("TWILIO_SMS_NUMBER", purchased.phoneNumber);
     process.env.TWILIO_SMS_NUMBER = purchased.phoneNumber;
 
-    // 4. Submit toll-free verification
+    // Submit toll-free verification with user-provided business details
     let verificationStatus = "NOT_SUBMITTED";
     try {
-      const businessName = process.env.BUSINESS_NAME || "Soshi Labs";
-      const businessWebsite = process.env.BUSINESS_WEBSITE || appUrl || "https://soshi.dev";
-      const contactEmail = process.env.BUSINESS_CONTACT_EMAIL || "support@soshi.dev";
+      const bizWebsite = biz.website || appUrl || "https://example.com";
 
-      const verification = await client.messaging.v1.tollfreeVerifications.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const verificationParams: any = {
         tollfreePhoneNumberSid: purchased.sid,
-        businessName,
-        businessWebsite,
-        notificationEmail: contactEmail,
+        businessName: biz.name,
+        businessWebsite: bizWebsite,
+        notificationEmail: biz.email,
         useCaseCategories: ["ACCOUNT_NOTIFICATIONS", "CUSTOMER_CARE"],
-        useCaseSummary: "Business communications platform for outreach, follow-ups, scheduling, and notifications.",
-        productionMessageSample: "Hi, just following up on our conversation. Let me know if you are free to chat. Reply STOP to opt out.",
+        useCaseSummary: biz.useCaseSummary || "Business communications platform for outreach, follow-ups, scheduling, and notifications.",
+        productionMessageSample: biz.messageSample || "Hi, just following up on our conversation. Let me know if you are free to chat. Reply STOP to opt out.",
         additionalInformation: "Users add contacts and initiate SMS from our platform. All messages include opt-out instructions.",
         optInType: "VERBAL",
-        optInImageUrls: [businessWebsite],
-        messageVolume: "1,000",
-        businessType: "SOLE_PROPRIETOR",
-        businessStreetAddress: process.env.BUSINESS_ADDRESS || "123 Main St",
-        businessCity: process.env.BUSINESS_CITY || "Dallas",
-        businessStateProvinceRegion: process.env.BUSINESS_STATE || "TX",
-        businessPostalCode: process.env.BUSINESS_ZIP || "75201",
-        businessCountry: "US",
-        businessContactFirstName: process.env.BUSINESS_FIRST_NAME || "Admin",
-        businessContactLastName: process.env.BUSINESS_LAST_NAME || "User",
-        businessContactEmail: contactEmail,
+        optInImageUrls: [bizWebsite],
+        messageVolume: biz.messageVolume || "1,000",
+        businessType: biz.type || "SOLE_PROPRIETOR",
+        businessStreetAddress: biz.street,
+        businessCity: biz.city,
+        businessStateProvinceRegion: biz.state,
+        businessPostalCode: biz.zip,
+        businessCountry: biz.country || "US",
+        businessContactFirstName: biz.firstName,
+        businessContactLastName: biz.lastName,
+        businessContactEmail: biz.email,
         businessContactPhone: purchased.phoneNumber,
-      });
+      };
+
+      if (biz.registrationNumber) {
+        verificationParams.businessRegistrationNumber = biz.registrationNumber;
+      }
+
+      const verification = await client.messaging.v1.tollfreeVerifications.create(verificationParams);
 
       verificationStatus = verification.status;
       if (user) {

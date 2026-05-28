@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { loadCommsEnv } from "@/lib/env";
 import { addSms, getSmsConversation, getRecentConversations } from "@/lib/stores/sms-store";
-import { logInteraction } from "@/lib/stores/contacts";
+import { logInteraction, findContactByPhone } from "@/lib/stores/contacts";
 import { requireAuth, getCurrentUser } from "@/lib/api-auth";
 
 export async function GET(req: Request) {
@@ -24,13 +24,17 @@ export async function GET(req: Request) {
   }
 
   const raw = getRecentConversations();
-  const conversations = raw.map((c) => ({
-    phone: c.phoneNumber,
-    lastMessage: c.lastMessage.body?.slice(0, 100) ?? "",
-    lastTime: c.lastMessage.timestamp,
-    direction: c.lastMessage.direction,
-    count: c.messageCount,
-  }));
+  const conversations = raw.map((c) => {
+    const contact = findContactByPhone(c.phoneNumber);
+    return {
+      phone: c.phoneNumber,
+      name: contact?.name || null,
+      lastMessage: c.lastMessage.body?.slice(0, 100) ?? "",
+      lastTime: c.lastMessage.timestamp,
+      direction: c.lastMessage.direction,
+      count: c.messageCount,
+    };
+  });
   return NextResponse.json({ conversations });
 }
 

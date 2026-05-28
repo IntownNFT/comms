@@ -4,7 +4,14 @@ import { homedir } from "node:os";
 
 export type DomainType = "personal" | "business";
 
-export type EmailCategory = "primary" | "transactions" | "updates" | "promotions" | "newsletters";
+export type EmailCategory =
+  | "primary"
+  | "social"
+  | "promotions"
+  | "updates"
+  | "forums"
+  | "transactions"
+  | "newsletters";
 
 export interface Email {
   id: string;
@@ -19,7 +26,7 @@ export interface Email {
   timestamp: string;
   read: boolean;
   flagged: boolean;
-  folder: "inbox" | "sent" | "drafts" | "trash";
+  folder: "inbox" | "sent" | "drafts" | "trash" | "spam";
   threadId?: string;
   gmailMessageId?: string;
   // Domain classification (deterministic, not AI)
@@ -236,6 +243,19 @@ export function updateEmailAI(id: string, aiData: {
   const email = emails.find((e) => e.id === id);
   if (!email) return null;
   Object.assign(email, aiData);
+  saveAll(emails);
+  return email;
+}
+
+/** Update Gmail-sourced fields (category, folder, read, flagged) on a previously synced email. */
+export function updateEmailByThreadId(
+  threadId: string,
+  updates: Partial<Pick<Email, "category" | "folder" | "read" | "flagged">>,
+): Email | null {
+  const emails = seedIfEmpty();
+  const email = emails.find((e) => e.threadId === threadId);
+  if (!email) return null;
+  Object.assign(email, updates);
   saveAll(emails);
   return email;
 }

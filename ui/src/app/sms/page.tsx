@@ -16,6 +16,7 @@ import {
 
 interface Conversation {
   phone: string;
+  name: string | null;
   lastMessage: string;
   lastTime: string;
   direction: "inbound" | "outbound";
@@ -231,7 +232,7 @@ export default function SMSPage() {
                   )}
                 >
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[13px] font-medium text-foreground truncate mr-2">{formatPhone(c.phone)}</span>
+                    <span className="text-[13px] font-medium text-foreground truncate mr-2">{c.name || formatPhone(c.phone)}</span>
                     <span className="text-[10px] text-muted-foreground/50 shrink-0">{relativeTime(c.lastTime)}</span>
                   </div>
                   <p className="text-[12px] text-muted-foreground/60 truncate">
@@ -266,9 +267,14 @@ export default function SMSPage() {
                 <ArrowLeftIcon className="size-5" />
               </button>
               <PhoneIcon className="size-4 text-muted-foreground/60" />
-              <span className="text-[14px] font-medium text-foreground">
-                {composing ? "New Message" : formatPhone(selectedPhone ?? "")}
-              </span>
+              <div className="flex flex-col">
+                <span className="text-[14px] font-medium text-foreground">
+                  {composing ? "New Message" : (conversations.find(c => c.phone === selectedPhone)?.name || formatPhone(selectedPhone ?? ""))}
+                </span>
+                {!composing && conversations.find(c => c.phone === selectedPhone)?.name && (
+                  <span className="text-[11px] text-muted-foreground/50">{formatPhone(selectedPhone ?? "")}</span>
+                )}
+              </div>
             </div>
 
             {/* To: input for compose */}

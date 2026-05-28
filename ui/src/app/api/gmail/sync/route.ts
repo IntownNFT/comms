@@ -6,7 +6,7 @@ import {
   getDefaultGmailAccount,
   saveGmailAccount,
 } from "@/lib/stores/gmail-store";
-import { addEmail, getAllEmails } from "@/lib/stores/inbox-store";
+import { addEmail, getAllEmails, updateEmailByThreadId } from "@/lib/stores/inbox-store";
 import { logInteraction } from "@/lib/stores/contacts";
 import { requireAuth } from "@/lib/api-auth";
 
@@ -76,8 +76,27 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const accountEmail = body.account as string | undefined;
-  const query = (body.query as string) || "is:inbox";
-  const limit = (body.limit as number) || 20;
+  // Default: pull everything the user can see (inbox + all category tabs + sent + spam).
+  // Callers can override with a narrower Gmail search query.
+  const query = (body.query as string) || "in:anywhere -in:chats";
+  const includeSpamTrash = body.includeSpamTrash !== false; // default true
+  // Default 200; cap at 2000 to protect against accidental huge syncs.
+  const requestedLimit = (body.limit as number) || 200;
+  const limit = Math.min(Math.max(requestedLimit, 1), 2000);
+  // Gmail's list endpoint caps at 500 per page; use 100 for balance of throughput vs quota.
+  const PAGE_SIZE = 100;
+
+  // Gmail CATEGORY_* system label → our EmailCategory enum.
+  const mapCategory = (labelIds: string[]): "primary" | "social" | "promotions" | "updates" | "forums" | undefined => {
+    if (labelIds.includes("CATEGORY_PERSONAL")) return "primary";
+    if (labelIds.includes("CATEGORY_SOCIAL")) return "social";
+    if (labelIds.includes("CATEGORY_PROMOTIONS")) return "promotions";
+    if (labelIds.includes("CATEGORY_UPDATES")) return "updates";
+    if (labelIds.includes("CATEGORY_FORUMS")) return "forums";
+    // Messages in inbox without any category label are typically Primary.
+    if (labelIds.includes("INBOX")) return "primary";
+    return undefined;
+  };
 
   // Resolve account
   const account = accountEmail
@@ -124,14 +143,24 @@ export async function POST(req: Request) {
 
     const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-    // List messages
-    const listRes = await gmail.users.messages.list({
-      userId: "me",
-      q: query,
-      maxResults: limit,
-    });
+    // List messages — page through until we hit `limit` or run out of results.
+    const messageIds: { id?: string | null; threadId?: string | null }[] = [];
+    let pageToken: string | undefined;
+    while (messageIds.length < limit) {
+      const remaining = limit - messageIds.length;
+      const listRes = await gmail.users.messages.list({
+        userId: "me",
+        q: query,
+        includeSpamTrash,
+        maxResults: Math.min(PAGE_SIZE, remaining),
+        pageToken,
+      });
+      const page = listRes.data.messages || [];
+      messageIds.push(...page);
+      pageToken = listRes.data.nextPageToken || undefined;
+      if (!pageToken || page.length === 0) break;
+    }
 
-    const messageIds = listRes.data.messages || [];
     if (messageIds.length === 0) {
       return NextResponse.json({
         message: "No messages found matching query.",
@@ -147,16 +176,46 @@ export async function POST(req: Request) {
     );
 
     let imported = 0;
+    let updated = 0;
 
     for (const msgRef of messageIds) {
       if (!msgRef.id) continue;
 
-      // Skip if we already have this message
       const gmailThreadId = `gmail-${msgRef.threadId || msgRef.id}`;
       const gmailMsgId = `gmail-msg-${msgRef.id}`;
+      const isDuplicate = existingThreadIds.has(gmailMsgId);
 
-      // Check both thread-level and message-level dedup
-      if (existingThreadIds.has(gmailMsgId)) continue;
+      // If we already have this message, refresh its mutable Gmail fields (category,
+      // folder, read, flagged) — we previously synced before category mapping existed.
+      if (isDuplicate) {
+        try {
+          const msgRes = await gmail.users.messages.get({
+            userId: "me",
+            id: msgRef.id,
+            format: "metadata",
+            metadataHeaders: [],
+          });
+          const labelIds = msgRes.data.labelIds || [];
+          const isSent = labelIds.includes("SENT");
+          const isSpam = labelIds.includes("SPAM");
+          const isTrash = labelIds.includes("TRASH");
+          const isDraft = labelIds.includes("DRAFT");
+          const folder: "sent" | "drafts" | "trash" | "spam" | "inbox" = isSent
+            ? "sent"
+            : isDraft ? "drafts" : isTrash ? "trash" : isSpam ? "spam" : "inbox";
+          const category = mapCategory(labelIds);
+          const result = updateEmailByThreadId(gmailMsgId, {
+            folder,
+            category,
+            read: !labelIds.includes("UNREAD"),
+            flagged: labelIds.includes("STARRED"),
+          });
+          if (result) updated++;
+        } catch {
+          // ignore refresh errors
+        }
+        continue;
+      }
 
       try {
         const msgRes = await gmail.users.messages.get({
@@ -179,6 +238,19 @@ export async function POST(req: Request) {
         const finalBody = bodyText || msg.snippet || "";
 
         const isSent = labelIds.includes("SENT") || fromEmail === account.email;
+        const isSpam = labelIds.includes("SPAM");
+        const isTrash = labelIds.includes("TRASH");
+        const isDraft = labelIds.includes("DRAFT");
+        const folder: "sent" | "drafts" | "trash" | "spam" | "inbox" = isSent
+          ? "sent"
+          : isDraft
+            ? "drafts"
+            : isTrash
+              ? "trash"
+              : isSpam
+                ? "spam"
+                : "inbox";
+        const category = mapCategory(labelIds);
 
         // Extract List-Unsubscribe header for one-click unsubscribe
         const listUnsub = getHeader(headers, "List-Unsubscribe");
@@ -202,7 +274,8 @@ export async function POST(req: Request) {
           timestamp: date || new Date(Number(msg.internalDate) || Date.now()).toISOString(),
           read: !labelIds.includes("UNREAD"),
           flagged: labelIds.includes("STARRED"),
-          folder: isSent ? "sent" : "inbox",
+          folder,
+          category,
           threadId: gmailMsgId,
           gmailMessageId: msgRef.id || undefined,
           unsubscribeUrl,
@@ -236,8 +309,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({
-      message: `Synced ${imported} email(s) from ${account.email}`,
+      message: `Synced ${imported} new, refreshed ${updated} from ${account.email}`,
       count: imported,
+      updated,
       account: account.email,
     });
   } catch (err) {

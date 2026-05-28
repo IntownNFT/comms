@@ -26,6 +26,8 @@ import {
   ZapIcon,
   MessageCircleIcon,
   RefreshCwIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession, authClient } from "@/lib/auth-client";
@@ -49,7 +51,7 @@ interface AuthStatus {
   resend: { connected: boolean; masked: string | null; fromEmail: string | null };
 }
 
-type Tab = "general" | "billing" | "email" | "sms" | "voice" | "notifications" | "ai-automations";
+type Tab = "general" | "billing" | "email" | "sms" | "voice" | "notifications";
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   list_contacts: "List all contacts",
@@ -812,9 +814,87 @@ interface TollFreeNumber {
   friendlyName: string;
 }
 
+interface BusinessDetails {
+  name: string;
+  website: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  type: string;
+  registrationNumber: string;
+  useCaseSummary: string;
+  messageSample: string;
+  messageVolume: string;
+}
+
+const EMPTY_BIZ: BusinessDetails = {
+  name: "",
+  website: "",
+  email: "",
+  firstName: "",
+  lastName: "",
+  street: "",
+  city: "",
+  state: "",
+  zip: "",
+  country: "US",
+  type: "SOLE_PROPRIETOR",
+  registrationNumber: "",
+  useCaseSummary: "Business communications platform for outreach, follow-ups, scheduling, and notifications.",
+  messageSample: "Hi, just following up on our conversation. Let me know if you are free to chat. Reply STOP to opt out.",
+  messageVolume: "1,000",
+};
+
+const BIZ_TYPES = [
+  { value: "SOLE_PROPRIETOR", label: "Sole Proprietor" },
+  { value: "PARTNERSHIP", label: "Partnership" },
+  { value: "LIMITED_LIABILITY_CORPORATION", label: "LLC" },
+  { value: "CO_OPERATIVE", label: "Co-operative" },
+  { value: "NON_PROFIT_CORPORATION", label: "Non-Profit" },
+  { value: "CORPORATION", label: "Corporation" },
+];
+
+function DetailRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <div className="text-[11px] text-muted-foreground/60">{label}</div>
+      <div className="text-xs text-foreground">{value || "—"}</div>
+    </div>
+  );
+}
+
+interface VerificationDetails {
+  businessName?: string;
+  businessWebsite?: string;
+  businessType?: string;
+  businessStreetAddress?: string;
+  businessCity?: string;
+  businessStateProvinceRegion?: string;
+  businessPostalCode?: string;
+  businessCountry?: string;
+  businessContactFirstName?: string;
+  businessContactLastName?: string;
+  businessContactEmail?: string;
+  notificationEmail?: string;
+  useCaseSummary?: string;
+  productionMessageSample?: string;
+  messageVolume?: string;
+  optInType?: string;
+  rejectionReason?: string;
+  dateCreated?: string;
+  dateUpdated?: string;
+}
+
 function SMSSettingsSection() {
   const [smsNumber, setSmsNumber] = useState<string | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const [verificationDetails, setVerificationDetails] = useState<VerificationDetails | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
@@ -826,12 +906,18 @@ function SMSSettingsSection() {
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
 
+  // Business details form state
+  const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
+  const [biz, setBiz] = useState<BusinessDetails>(EMPTY_BIZ);
+  const updateBiz = (field: keyof BusinessDetails, value: string) => setBiz((prev) => ({ ...prev, [field]: value }));
+
   useEffect(() => {
     fetch("/api/twilio/sms-status")
       .then((r) => r.json())
       .then((data) => {
         if (data.smsNumber) setSmsNumber(data.smsNumber);
         if (data.verificationStatus) setVerificationStatus(data.verificationStatus);
+        if (data.verificationDetails) setVerificationDetails(data.verificationDetails);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -854,15 +940,30 @@ function SMSSettingsSection() {
     setLoadingNumbers(false);
   };
 
-  const purchaseNumber = async (phoneNumber: string) => {
-    setPurchasing(phoneNumber);
+  const purchaseAndVerify = async () => {
+    if (!selectedNumber) return;
+    const missing = [];
+    if (!biz.name) missing.push("Business Name");
+    if (!biz.email) missing.push("Email");
+    if (!biz.firstName) missing.push("First Name");
+    if (!biz.lastName) missing.push("Last Name");
+    if (!biz.street) missing.push("Street Address");
+    if (!biz.city) missing.push("City");
+    if (!biz.state) missing.push("State");
+    if (!biz.zip) missing.push("ZIP Code");
+    if (missing.length > 0) {
+      setError(`Missing required fields: ${missing.join(", ")}`);
+      return;
+    }
+
+    setPurchasing(selectedNumber);
     setError("");
     setSuccess("");
     try {
       const res = await fetch("/api/twilio/sms-setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber: selectedNumber, business: biz }),
       });
       const data = await res.json();
       if (data.error) {
@@ -872,6 +973,7 @@ function SMSSettingsSection() {
         setVerificationStatus(data.verificationStatus || "PENDING_REVIEW");
         setSuccess(`${data.phoneNumber} is now your SMS number! Verification submitted.`);
         setShowPicker(false);
+        setSelectedNumber(null);
         setAvailableNumbers([]);
       }
     } catch {
@@ -886,6 +988,7 @@ function SMSSettingsSection() {
       const res = await fetch("/api/twilio/sms-status");
       const data = await res.json();
       if (data.verificationStatus) setVerificationStatus(data.verificationStatus);
+      if (data.verificationDetails) setVerificationDetails(data.verificationDetails);
     } catch { /* silent */ }
     setChecking(false);
   };
@@ -940,6 +1043,77 @@ function SMSSettingsSection() {
                   <span className="text-xs text-green-400 font-medium">SMS is active and delivering</span>
                 </div>
               )}
+
+              {/* Verification Details Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowDetails(!showDetails)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                {showDetails ? <ChevronUpIcon className="size-3.5" /> : <ChevronDownIcon className="size-3.5" />}
+                {showDetails ? "Hide" : "View"} Verification Details
+              </button>
+
+              {showDetails && (
+                <div className="rounded-lg border border-border bg-surface-2/30 p-4 space-y-3">
+                  {!verificationDetails ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                      Loading details...
+                    </div>
+                  ) : (
+                    <>
+                      {verificationDetails.rejectionReason && (
+                        <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/10 mb-2">
+                          <div className="text-xs font-medium text-destructive mb-0.5">Rejection Reason</div>
+                          <div className="text-xs text-destructive/80">{verificationDetails.rejectionReason}</div>
+                        </div>
+                      )}
+
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Business Info</div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                        <DetailRow label="Business Name" value={verificationDetails.businessName} />
+                        <DetailRow label="Type" value={BIZ_TYPES.find(t => t.value === verificationDetails.businessType)?.label || verificationDetails.businessType} />
+                        <DetailRow label="Contact" value={[verificationDetails.businessContactFirstName, verificationDetails.businessContactLastName].filter(Boolean).join(" ")} />
+                        <DetailRow label="Email" value={verificationDetails.businessContactEmail || verificationDetails.notificationEmail} />
+                        <DetailRow label="Website" value={verificationDetails.businessWebsite} />
+                      </div>
+
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-2">Address</div>
+                      <div className="text-xs text-foreground">
+                        {[
+                          verificationDetails.businessStreetAddress,
+                          [verificationDetails.businessCity, verificationDetails.businessStateProvinceRegion, verificationDetails.businessPostalCode].filter(Boolean).join(", "),
+                          verificationDetails.businessCountry,
+                        ].filter(Boolean).join("\n").split("\n").map((line, i) => <div key={i}>{line}</div>)}
+                      </div>
+
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-2">Messaging</div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                        <DetailRow label="Volume" value={verificationDetails.messageVolume} />
+                        <DetailRow label="Opt-In" value={verificationDetails.optInType} />
+                      </div>
+                      {verificationDetails.useCaseSummary && (
+                        <div>
+                          <div className="text-[11px] text-muted-foreground/60 mb-0.5">Use Case</div>
+                          <div className="text-xs text-foreground/80">{verificationDetails.useCaseSummary}</div>
+                        </div>
+                      )}
+                      {verificationDetails.productionMessageSample && (
+                        <div>
+                          <div className="text-[11px] text-muted-foreground/60 mb-0.5">Sample Message</div>
+                          <div className="text-xs text-foreground/80 italic">&ldquo;{verificationDetails.productionMessageSample}&rdquo;</div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-2 border-t border-border/50">
+                        <DetailRow label="Submitted" value={verificationDetails.dateCreated ? new Date(verificationDetails.dateCreated).toLocaleDateString() : undefined} />
+                        <DetailRow label="Last Updated" value={verificationDetails.dateUpdated ? new Date(verificationDetails.dateUpdated).toLocaleDateString() : undefined} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <div className="space-y-4">
@@ -955,10 +1129,10 @@ function SMSSettingsSection() {
                     {loadingNumbers ? "Loading numbers..." : "Browse Available Numbers"}
                   </Button>
                 </div>
-              ) : (
+              ) : !selectedNumber ? (
                 <>
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium text-foreground">Choose a toll-free number</div>
+                    <div className="text-sm font-medium text-foreground">Step 1: Choose a toll-free number</div>
                     <button onClick={() => { setShowPicker(false); setAvailableNumbers([]); }} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">Cancel</button>
                   </div>
                   {availableNumbers.length === 0 ? (
@@ -969,17 +1143,13 @@ function SMSSettingsSection() {
                         <button
                           key={n.phoneNumber}
                           type="button"
-                          onClick={() => purchaseNumber(n.phoneNumber)}
-                          disabled={!!purchasing}
+                          onClick={() => setSelectedNumber(n.phoneNumber)}
                           className={cn(
                             "flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors cursor-pointer",
-                            purchasing === n.phoneNumber
-                              ? "bg-accent/10 border-accent/30"
-                              : "bg-surface-2/30 border-border hover:border-accent/30 hover:bg-accent/5"
+                            "bg-surface-2/30 border-border hover:border-accent/30 hover:bg-accent/5"
                           )}
                         >
                           <span className="text-sm font-medium text-foreground">{n.friendlyName}</span>
-                          {purchasing === n.phoneNumber && <Loader2Icon className="size-3.5 animate-spin text-accent" />}
                         </button>
                       ))}
                     </div>
@@ -988,6 +1158,100 @@ function SMSSettingsSection() {
                     <RefreshCwIcon className="size-3" />
                     Load more
                   </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-sm font-medium text-foreground">Step 2: Business Verification Details</div>
+                    <button onClick={() => setSelectedNumber(null)} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">Back</button>
+                  </div>
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-accent/5 border border-accent/20 mb-2">
+                    <PhoneIcon className="size-3.5 text-accent" />
+                    <span className="text-sm font-medium text-foreground">{selectedNumber}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Twilio requires real business details to verify toll-free numbers. Fake info will be rejected.
+                  </p>
+
+                  {/* Business Info */}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">First Name *</label>
+                        <input value={biz.firstName} onChange={(e) => updateBiz("firstName", e.target.value)} placeholder="John" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">Last Name *</label>
+                        <input value={biz.lastName} onChange={(e) => updateBiz("lastName", e.target.value)} placeholder="Doe" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Business Name *</label>
+                      <input value={biz.name} onChange={(e) => updateBiz("name", e.target.value)} placeholder="Acme Inc" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">Business Type *</label>
+                        <select value={biz.type} onChange={(e) => updateBiz("type", e.target.value)} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent/30">
+                          {BIZ_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1">Registration # (EIN)</label>
+                        <input value={biz.registrationNumber} onChange={(e) => updateBiz("registrationNumber", e.target.value)} placeholder="12-3456789" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Contact Email *</label>
+                      <input value={biz.email} onChange={(e) => updateBiz("email", e.target.value)} type="email" placeholder="you@company.com" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Website</label>
+                      <input value={biz.website} onChange={(e) => updateBiz("website", e.target.value)} placeholder="https://yoursite.com" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                    </div>
+
+                    {/* Address */}
+                    <div className="pt-1">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">Business Address</div>
+                      <div className="space-y-3">
+                        <input value={biz.street} onChange={(e) => updateBiz("street", e.target.value)} placeholder="123 Main St" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                        <div className="grid grid-cols-3 gap-3">
+                          <input value={biz.city} onChange={(e) => updateBiz("city", e.target.value)} placeholder="City" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                          <input value={biz.state} onChange={(e) => updateBiz("state", e.target.value)} placeholder="State" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                          <input value={biz.zip} onChange={(e) => updateBiz("zip", e.target.value)} placeholder="ZIP" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Use Case */}
+                    <div className="pt-1">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">Messaging Details</div>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs text-muted-foreground/60 mb-1">Use Case Summary</label>
+                          <textarea value={biz.useCaseSummary} onChange={(e) => updateBiz("useCaseSummary", e.target.value)} rows={2} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground/60 mb-1">Sample Message</label>
+                          <textarea value={biz.messageSample} onChange={(e) => updateBiz("messageSample", e.target.value)} rows={2} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground/60 mb-1">Monthly Volume</label>
+                          <select value={biz.messageVolume} onChange={(e) => updateBiz("messageVolume", e.target.value)} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent/30">
+                            <option value="100">~100</option>
+                            <option value="1,000">~1,000</option>
+                            <option value="10,000">~10,000</option>
+                            <option value="100,000">~100,000</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button onClick={purchaseAndVerify} disabled={!!purchasing} className="w-full gap-2 mt-2">
+                      {purchasing ? <Loader2Icon className="size-3.5 animate-spin" /> : <CheckCircleIcon className="size-3.5" />}
+                      {purchasing ? "Setting up..." : "Purchase Number & Submit Verification"}
+                    </Button>
+                  </div>
                 </>
               )}
             </div>
@@ -1449,7 +1713,13 @@ function TwilioVoiceSection() {
 }
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const [settings, setSettings] = useState<Settings>({
+    agentModes: {},
+    fromEmail: "",
+    anthropicModel: "gemini-2.5-flash",
+    temperature: 0.7,
+    notificationsEnabled: true,
+  });
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>("general");
@@ -1465,13 +1735,14 @@ export default function SettingsPage() {
       if (!r.ok) return null;
       return r.json();
     }).then((data) => {
-      if (data) setSettings({
-        agentModes: data.agentModes || {},
-        fromEmail: data.fromEmail || "",
-        anthropicModel: data.anthropicModel || "gemini-2.5-flash",
-        temperature: data.temperature ?? 0.7,
-        notificationsEnabled: data.notificationsEnabled ?? true,
-      });
+      if (data) setSettings((prev) => ({
+        ...prev,
+        agentModes: data.agentModes || prev.agentModes,
+        fromEmail: data.fromEmail || prev.fromEmail,
+        anthropicModel: data.anthropicModel || prev.anthropicModel,
+        temperature: data.temperature ?? prev.temperature,
+        notificationsEnabled: data.notificationsEnabled ?? prev.notificationsEnabled,
+      }));
     }).catch(() => {});
     fetch("/api/auth/session").then((r) => r.json()).then((data) => {
       setAuthStatus({ session: data.user ? { user: data.user } : null });
@@ -1514,7 +1785,6 @@ export default function SettingsPage() {
   }, []);
 
   const save = async () => {
-    if (!settings) return;
     setSaving(true);
     await fetch("/api/settings", {
       method: "POST",
@@ -1524,29 +1794,16 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
-  if (!settings) {
-    return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-xl shimmer" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   const isCloudMode = !!process.env.NEXT_PUBLIC_CONVEX_URL;
   const isManagedMode = process.env.NEXT_PUBLIC_COMMS_MANAGED === "true";
 
   const tabs: { value: Tab; label: string; icon: React.ElementType }[] = [
     { value: "general", label: "General", icon: SettingsIcon },
     ...(isCloudMode ? [{ value: "billing" as Tab, label: "Billing", icon: CreditCardIcon }] : []),
-    { value: "email", label: "Email", icon: MailIcon },
+    { value: "email", label: "Email & AI", icon: MailIcon },
     { value: "sms" as Tab, label: "SMS", icon: MessageCircleIcon },
     { value: "voice", label: "Voice", icon: PhoneIcon },
     { value: "notifications", label: "Notifications", icon: BellIcon },
-    { value: "ai-automations" as Tab, label: "AI Automations", icon: SparklesIcon },
   ];
 
   return (
@@ -1881,6 +2138,11 @@ export default function SettingsPage() {
 
           {/* Gmail (Personal Email) */}
           <GmailSection />
+
+          {/* AI Automations — merged into Email tab */}
+          <div className="pt-4 border-t border-border">
+            <AIAutomationsSection />
+          </div>
         </div>
       )}
 
@@ -1938,10 +2200,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* AI Automations Tab */}
-      {tab === "ai-automations" && (
-        <AIAutomationsSection />
-      )}
     </div>
   );
 }
